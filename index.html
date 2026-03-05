@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pokémon Merge Tactics</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0f0f23;
+  --panel: #1a1a35;
+  --panel-light: #252550;
+  --border: #333366;
+  --gold: #ffd700;
+  --hp-green: #44cc44;
+  --hp-red: #cc4444;
+  --text: #e8e8f0;
+  --text-dim: #8888aa;
+  --xp-blue: #4488ff;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 100vh;
+}
+
+/* HEADER */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.round-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.round-badge span { color: var(--text); font-size: 16px; }
+
+.level-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1a2244;
+  border: 1px solid #334488;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  white-space: nowrap;
+}
+.level-badge:hover { border-color: var(--xp-blue); }
+
+.level-num {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--xp-blue);
+  min-width: 18px;
+  text-align: center;
+}
+
+.xp-bar-wrap {
+  width: 50px;
+  height: 8px;
+  background: #111;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.xp-bar {
+  height: 100%;
+  background: var(--xp-blue);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.hp-bar-wrap {
+  flex: 1;
+  background: #1a0a0a;
+  border-radius: 8px;
+  height: 18px;
+  border: 1px solid #442222;
+  position: relative;
+  overflow: hidden;
+  min-width: 80px;
+}
+
+.hp-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--hp-red), var(--hp-green));
+  border-radius: 8px;
+  transition: width 0.5s ease;
+}
+
+.hp-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 700;
+  text-shadow: 1px 1px 2px #000;
+}
+
+.gold-display {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold);
+  min-width: 50px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* PHASE BANNER */
+.phase-banner {
+  text-align: center;
+  padding: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.phase-banner.battle { color: var(--hp-red); border-color: #663333; }
+
+/* BATTLE ARENA */
+.arena {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  height: 250px;
+  position: relative;
+  overflow: hidden;
+  display: none;
+}
+.arena.active { display: block; }
+
+.arena-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 70%),
+    radial-gradient(ellipse at center, #1e2a4a 0%, #0f0f23 100%);
+}
+
+.arena-label {
+  position: absolute;
+  top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.6;
+  z-index: 1;
+}
+.arena-label.left { left: 10px; color: #6699ff; }
+.arena-label.right { right: 10px; color: #ff6666; }
+
+.arena-divider {
+  position: absolute;
+  top: 10%; bottom: 10%; left: 50%;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--border), transparent);
+}
+
+.battle-unit {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: left 0.15s linear, top 0.15s linear;
+  z-index: 2;
+}
+
+.battle-unit img {
+  width: 44px;
+  height: 44px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  transition: transform 0.1s;
+}
+
+.battle-unit.enemy img { transform: scaleX(-1); }
+.battle-unit.attacking img { transform: scale(1.3); }
+.battle-unit.enemy.attacking img { transform: scaleX(-1) scale(1.3); }
+.battle-unit.fainted { opacity: 0; transition: opacity 0.4s; }
+
+.unit-hp-bar {
+  width: 40px;
+  height: 4px;
+  background: #222;
+  border-radius: 3px;
+  margin-top: 1px;
+  overflow: hidden;
+}
+
+.unit-hp-fill {
+  height: 100%;
+  background: var(--hp-green);
+  transition: width 0.2s;
+  border-radius: 3px;
+}
+.unit-hp-fill.low { background: var(--hp-red); }
+
+.damage-number {
+  position: absolute;
+  font-size: 14px;
+  font-weight: 900;
+  color: #ff4444;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000;
+  pointer-events: none;
+  animation: floatUp 0.8s ease-out forwards;
+  z-index: 10;
+}
+.damage-number.effective { color: #ffaa00; font-size: 16px; }
+
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-40px); }
+}
+
+.battle-result-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.7);
+  z-index: 20;
+  animation: fadeIn 0.3s;
+}
+.battle-result-overlay h2 { font-size: 28px; margin-bottom: 8px; }
+.battle-result-overlay p { font-size: 14px; color: var(--text-dim); }
+.battle-result-overlay .win { color: var(--gold); }
+.battle-result-overlay .lose { color: var(--hp-red); }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* FIELD & BENCH AREAS */
+.area-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 8px 8px;
+}
+
+.area-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+  padding: 0 2px;
+}
+
+.area-label .count { color: var(--text); }
+.area-label .count.full { color: var(--hp-red); }
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  touch-action: none;
+}
+
+.bench-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  touch-action: none;
+}
+
+.cell {
+  aspect-ratio: 1;
+  background: var(--panel-light);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.cell:hover { border-color: #5555aa; }
+.cell.selected { border-color: var(--gold); box-shadow: 0 0 10px rgba(255,215,0,0.4); }
+.cell.merge-target { border-color: #44ff44; box-shadow: 0 0 10px rgba(68,255,68,0.4); }
+.cell.empty { cursor: default; opacity: 0.4; }
+.cell.locked {
+  cursor: not-allowed;
+  opacity: 0.15;
+  background: #111122;
+}
+
+.cell img {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+}
+
+.cell .pkmn-name {
+  position: absolute;
+  bottom: 1px;
+  left: 0; right: 0;
+  font-size: 7px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1;
+}
+
+.cell .stars {
+  position: absolute;
+  top: 1px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 9px;
+  color: var(--gold);
+  text-shadow: 0 0 4px rgba(255,215,0,0.5);
+  line-height: 1;
+}
+
+.cell .type-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-size: 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0px 3px;
+  border-radius: 3px;
+  color: #fff;
+  line-height: 1.4;
+}
+
+.merge-flash {
+  animation: mergeFlash 0.4s ease-out;
+}
+
+@keyframes mergeFlash {
+  0% { transform: scale(0.5); opacity: 0; filter: brightness(3); }
+  50% { transform: scale(1.2); opacity: 1; filter: brightness(2); }
+  100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+}
+
+/* SELL ZONE */
+.sell-zone {
+  border: 2px dashed #663322;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #aa6633;
+  background: rgba(100, 50, 20, 0.15);
+  transition: all 0.2s;
+  cursor: pointer;
+  display: none;
+}
+
+.sell-zone.visible { display: block; }
+.sell-zone.drag-hover {
+  border-color: #ff6633;
+  background: rgba(200, 80, 30, 0.3);
+  color: #ff8844;
+  transform: scale(1.02);
+}
+
+/* SHOP */
+.shop-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 8px 8px;
+}
+
+.shop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  padding: 0 2px;
+}
+.shop-header span { font-size: 11px; font-weight: 700; color: var(--text-dim); }
+
+.shop {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.shop-card {
+  background: var(--panel-light);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.shop-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.shop-card.sold { opacity: 0.25; pointer-events: none; }
+.shop-card.cant-afford { opacity: 0.45; }
+
+.shop-card img {
+  width: 36px;
+  height: 36px;
+  image-rendering: pixelated;
+}
+.shop-card .card-name {
+  font-size: 7px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 1px;
+}
+.shop-card .card-cost {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* CONTROLS */
+.controls {
+  display: flex;
+  gap: 6px;
+}
+
+.btn {
+  flex: 1;
+  padding: 10px 6px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-light);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+  white-space: nowrap;
+}
+.btn:hover { border-color: #5555aa; background: #303060; }
+.btn:active { transform: scale(0.97); }
+
+.btn-battle {
+  background: linear-gradient(135deg, #cc3333, #aa2222);
+  border-color: #ff4444;
+  color: #fff;
+  font-size: 15px;
+}
+.btn-battle:hover { background: linear-gradient(135deg, #dd4444, #bb3333); }
+.btn-battle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-xp {
+  background: linear-gradient(135deg, #224488, #1a3366);
+  border-color: #4477cc;
+  color: #aaccff;
+}
+.btn-xp:hover { background: linear-gradient(135deg, #2255aa, #1a4488); }
+.btn-xp:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-sell {
+  background: linear-gradient(135deg, #884422, #663311);
+  border-color: #aa6633;
+}
+
+.btn .sub { font-size: 10px; color: var(--gold); display: block; }
+
+/* ROUND INFO */
+.round-info {
+  text-align: center;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  display: none;
+}
+.round-info.active { display: block; }
+.round-info .income { color: var(--gold); font-weight: 700; }
+.round-info .free { color: var(--hp-green); font-weight: 700; }
+
+/* OVERLAY */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.overlay h1 {
+  font-size: 28px;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, var(--gold), #ffaa00);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.overlay h2 { font-size: 22px; margin-bottom: 4px; }
+.overlay p { color: var(--text-dim); margin-bottom: 16px; font-size: 13px; }
+
+.overlay .btn-start {
+  width: 200px;
+  flex: none;
+  font-size: 18px;
+  padding: 14px;
+  background: linear-gradient(135deg, #cc3333, #aa2222);
+  border: 2px solid #ff4444;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.overlay .btn-start:hover { background: linear-gradient(135deg, #dd4444, #bb3333); }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="game">
+  <div class="header">
+    <div class="round-badge">R<span id="round-num">1</span></div>
+    <div class="level-badge" id="level-badge" title="Buy XP: 4g → 4 XP">
+      <div class="level-num" id="level-num">3</div>
+      <div class="xp-bar-wrap"><div class="xp-bar" id="xp-bar"></div></div>
+    </div>
+    <div class="hp-bar-wrap">
+      <div class="hp-bar" id="hp-bar"></div>
+      <div class="hp-text" id="hp-text"></div>
+    </div>
+    <div class="gold-display" id="gold-display"></div>
+  </div>
+
+  <div class="phase-banner" id="phase-banner"></div>
+  <div class="arena" id="arena">
+    <div class="arena-bg"></div>
+    <div class="arena-label left">YOUR TEAM</div>
+    <div class="arena-label right">ENEMY</div>
+    <div class="arena-divider"></div>
+  </div>
+  <div class="round-info" id="round-info"></div>
+
+  <div class="area-wrap" id="field-wrap">
+    <div class="area-label">
+      <span>FIELD <span class="count" id="field-count">(0/3)</span></span>
+      <span style="font-size:9px;color:#556">Only field Pokémon fight!</span>
+    </div>
+    <div class="field-grid" id="field"></div>
+  </div>
+
+  <div class="area-wrap" id="bench-wrap">
+    <div class="area-label">
+      <span>BENCH</span>
+      <span style="font-size:9px;color:#556" id="bench-hint"></span>
+    </div>
+    <div class="bench-grid" id="bench"></div>
+  </div>
+
+  <div class="sell-zone" id="sell-zone">SELL</div>
+
+  <div class="shop-wrap" id="shop-wrap">
+    <div class="shop-header">
+      <span>SHOP</span>
+      <span id="shop-hint"></span>
+    </div>
+    <div class="shop" id="shop"></div>
+  </div>
+
+  <div class="controls" id="controls"></div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<script>
+const FIELD_ROWS = 2;
+const FIELD_COLS = 4;
+const BENCH_SIZE = 8;
+const SHOP_SIZE = 5;
+const START_GOLD = 10;
+const START_HP = 100;
+const START_LEVEL = 3;
+const MAX_LEVEL = 8;
+const REROLL_COST = 1;
+const XP_BUY_COST = 4;
+const XP_BUY_AMOUNT = 4;
+const XP_PER_ROUND = 2;
+const BASE_INCOME = 3;
+const INTEREST_RATE = 0.1;
+const MAX_INTEREST = 5;
+const WIN_BONUS = 2;
+const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+
+const XP_TO_NEXT = [0, 0, 0, 2, 6, 10, 20, 36, 999];
+
+const TYPE_COLORS = {
+  fire: '#f08030', water: '#6890f0', grass: '#78c850', electric: '#f8d030',
+  ghost: '#705898', fighting: '#c03028', psychic: '#f85888', rock: '#b8a038'
+};
+
+const TYPE_CHART = {
+  fire: { grass: 1.5, water: 0.75, rock: 0.75 },
+  water: { fire: 1.5, grass: 0.75, electric: 0.75 },
+  grass: { water: 1.5, fire: 0.75 },
+  electric: { water: 1.5, grass: 0.75 },
+  ghost: { psychic: 1.5, fighting: 0 },
+  fighting: { rock: 1.5, ghost: 0, psychic: 0.75 },
+  psychic: { fighting: 1.5, ghost: 0.75 },
+  rock: { fire: 1.5, fighting: 0.75 }
+};
+
+const LINES = [
+  { forms: ['Bulbasaur','Ivysaur','Venusaur'], ids: [1,2,3], type: 'grass', cost: 1, hp: 50, atk: 12, spd: 1.0 },
+  { forms: ['Charmander','Charmeleon','Charizard'], ids: [4,5,6], type: 'fire', cost: 1, hp: 42, atk: 14, spd: 0.9 },
+  { forms: ['Squirtle','Wartortle','Blastoise'], ids: [7,8,9], type: 'water', cost: 1, hp: 52, atk: 11, spd: 1.0 },
+  { forms: ['Pichu','Pikachu','Raichu'], ids: [172,25,26], type: 'electric', cost: 2, hp: 36, atk: 16, spd: 0.7 },
+  { forms: ['Gastly','Haunter','Gengar'], ids: [92,93,94], type: 'ghost', cost: 2, hp: 32, atk: 18, spd: 0.8 },
+  { forms: ['Machop','Machoke','Machamp'], ids: [66,67,68], type: 'fighting', cost: 2, hp: 60, atk: 14, spd: 1.1 },
+  { forms: ['Abra','Kadabra','Alakazam'], ids: [63,64,65], type: 'psychic', cost: 3, hp: 28, atk: 22, spd: 0.65 },
+  { forms: ['Geodude','Graveler','Golem'], ids: [74,75,76], type: 'rock', cost: 1, hp: 65, atk: 10, spd: 1.2 },
+];
+
+const STAR_MULT = { 1: 1, 2: 1.9, 3: 3.5 };
+
+let uid_counter = 0;
+function makeUid() { return 'p' + (++uid_counter); }
+function spriteUrl(id) { return SPRITE_BASE + id + '.png'; }
+
+function getForm(lineIdx, star) {
+  const line = LINES[lineIdx];
+  return { name: line.forms[star - 1], spriteId: line.ids[star - 1], type: line.type, cost: line.cost };
+}
+
+function calcStats(lineIdx, star) {
+  const line = LINES[lineIdx];
+  const m = STAR_MULT[star];
+  return { hp: Math.round(line.hp * m), atk: Math.round(line.atk * m), spd: line.spd / (1 + (star - 1) * 0.15) };
+}
+
+function typeMult(atkType, defType) {
+  return (TYPE_CHART[atkType] && TYPE_CHART[atkType][defType]) || 1.0;
+}
+
+function createPokemon(lineIdx, star) {
+  star = star || 1;
+  const form = getForm(lineIdx, star);
+  const stats = calcStats(lineIdx, star);
+  return {
+    uid: makeUid(), lineIdx, star,
+    name: form.name, spriteId: form.spriteId, type: form.type, cost: form.cost,
+    hp: stats.hp, atk: stats.atk, spd: stats.spd
+  };
+}
+
+// =========== GAME STATE ===========
+let G = {};
+
+function initGameState() {
+  G = {
+    round: 0,
+    gold: START_GOLD,
+    hp: START_HP,
+    maxHp: START_HP,
+    level: START_LEVEL,
+    xp: 0,
+    field: Array.from({ length: FIELD_ROWS }, () => Array(FIELD_COLS).fill(null)),
+    bench: Array(BENCH_SIZE).fill(null),
+    shop: [],
+    shopSold: [],
+    phase: 'start',
+    selected: null,
+    battleUnits: [],
+    battleAnimId: null,
+    battleOver: false,
+    battleSpeed: 1,
+    streak: 0
+  };
+}
+
+// =========== POSITION HELPERS ===========
+function getAt(pos) {
+  if (pos.area === 'field') return G.field[pos.r][pos.c];
+  return G.bench[pos.i];
+}
+
+function setAt(pos, pkmn) {
+  if (pos.area === 'field') G.field[pos.r][pos.c] = pkmn;
+  else G.bench[pos.i] = pkmn;
+}
+
+function clearAt(pos) { setAt(pos, null); }
+
+function samePos(a, b) {
+  if (!a || !b) return false;
+  if (a.area !== b.area) return false;
+  if (a.area === 'field') return a.r === b.r && a.c === b.c;
+  return a.i === b.i;
+}
+
+function fieldCount() {
+  let n = 0;
+  for (let r = 0; r < FIELD_ROWS; r++)
+    for (let c = 0; c < FIELD_COLS; c++)
+      if (G.field[r][c]) n++;
+  return n;
+}
+
+function fieldPokemon() {
+  const out = [];
+  for (let r = 0; r < FIELD_ROWS; r++)
+    for (let c = 0; c < FIELD_COLS; c++)
+      if (G.field[r][c]) out.push(G.field[r][c]);
+  return out;
+}
+
+function firstEmptyBench() {
+  for (let i = 0; i < BENCH_SIZE; i++)
+    if (!G.bench[i]) return { area: 'bench', i };
+  return null;
+}
+
+function firstEmptyField() {
+  for (let r = 0; r < FIELD_ROWS; r++)
+    for (let c = 0; c < FIELD_COLS; c++)
+      if (!G.field[r][c]) return { area: 'field', r, c };
+  return null;
+}
+
+function canPlaceOnField(fromPos) {
+  if (fromPos && fromPos.area === 'field') return true;
+  return fieldCount() < G.level;
+}
+
+function allPokemon() {
+  const out = [];
+  for (let r = 0; r < FIELD_ROWS; r++)
+    for (let c = 0; c < FIELD_COLS; c++)
+      if (G.field[r][c]) out.push(G.field[r][c]);
+  for (let i = 0; i < BENCH_SIZE; i++)
+    if (G.bench[i]) out.push(G.bench[i]);
+  return out;
+}
+
+// =========== LEVEL / XP ===========
+function buyXp() {
+  if (G.phase !== 'prep') return;
+  if (G.gold < XP_BUY_COST) return;
+  if (G.level >= MAX_LEVEL) return;
+  G.gold -= XP_BUY_COST;
+  addXp(XP_BUY_AMOUNT);
+  render();
+}
+
+function addXp(amount) {
+  if (G.level >= MAX_LEVEL) return;
+  G.xp += amount;
+  while (G.level < MAX_LEVEL && G.xp >= XP_TO_NEXT[G.level]) {
+    G.xp -= XP_TO_NEXT[G.level];
+    G.level++;
+  }
+  if (G.level >= MAX_LEVEL) G.xp = 0;
+}
+
+// =========== SHOP ===========
+function rollShop() {
+  G.shop = [];
+  G.shopSold = [];
+  const pool = [];
+  LINES.forEach((line, i) => {
+    const w = line.cost === 1 ? 4 : line.cost === 2 ? 3 : 2;
+    for (let j = 0; j < w; j++) pool.push(i);
+  });
+  for (let i = 0; i < SHOP_SIZE; i++) {
+    const lineIdx = pool[Math.floor(Math.random() * pool.length)];
+    let star = 1;
+    if (G.round >= 8 && Math.random() < 0.15) star = 2;
+    if (G.round >= 15 && Math.random() < 0.08) star = 2;
+    G.shop.push(createPokemon(lineIdx, star));
+    G.shopSold.push(false);
+  }
+}
+
+function buyPokemon(idx) {
+  if (G.phase !== 'prep') return;
+  if (G.shopSold[idx]) return;
+  const pkmn = G.shop[idx];
+  if (G.gold < pkmn.cost) return;
+  const slot = firstEmptyBench();
+  if (!slot) return;
+  G.gold -= pkmn.cost;
+  G.shopSold[idx] = true;
+  setAt(slot, createPokemon(pkmn.lineIdx, pkmn.star));
+  render();
+}
+
+function rerollShop() {
+  if (G.phase !== 'prep') return;
+  if (G.gold < REROLL_COST) return;
+  G.gold -= REROLL_COST;
+  rollShop();
+  render();
+}
+
+// =========== SELECT / MERGE / MOVE ===========
+function handleCellClick(pos) {
+  if (G.phase !== 'prep' || justDragged) return;
+  const clicked = getAt(pos);
+  const sel = G.selected;
+
+  if (sel && samePos(sel, pos)) {
+    G.selected = null;
+    render();
+    return;
+  }
+
+  if (sel) {
+    const selPkmn = getAt(sel);
+    if (!selPkmn) { G.selected = null; render(); return; }
+
+    if (clicked && selPkmn.lineIdx === clicked.lineIdx && selPkmn.star === clicked.star && selPkmn.star < 3) {
+      clearAt(sel);
+      const evolved = createPokemon(selPkmn.lineIdx, selPkmn.star + 1);
+      setAt(pos, evolved);
+      G.selected = null;
+      render();
+      triggerMergeFlash(pos);
+      return;
+    }
+
+    if (!clicked) {
+      if (pos.area === 'field' && !canPlaceOnField(sel)) {
+        G.selected = pos.area === 'bench' ? null : { ...pos };
+        render();
+        return;
+      }
+      setAt(pos, selPkmn);
+      clearAt(sel);
+      G.selected = null;
+      render();
+      return;
+    }
+
+    // Swap
+    const canSwap =
+      (pos.area === 'field' || canPlaceOnField(null) || sel.area === 'field') &&
+      (sel.area === 'field' || canPlaceOnField(null) || pos.area === 'field');
+
+    if (pos.area === 'field' && sel.area === 'bench' && fieldCount() >= G.level) {
+      // Swapping bench→field is ok since it's a swap (1 leaves field, 1 enters)
+    }
+
+    setAt(sel, clicked);
+    setAt(pos, selPkmn);
+    G.selected = null;
+    render();
+    return;
+  }
+
+  if (clicked) {
+    G.selected = pos;
+  } else {
+    G.selected = null;
+  }
+  render();
+}
+
+function sellAt(pos) {
+  const pkmn = getAt(pos);
+  if (!pkmn) return;
+  G.gold += pkmn.cost * pkmn.star;
+  clearAt(pos);
+  G.selected = null;
+  render();
+}
+
+function sellSelected() {
+  if (!G.selected) return;
+  sellAt(G.selected);
+}
+
+function triggerMergeFlash(pos) {
+  const selector = pos.area === 'field'
+    ? `#field .cell[data-r="${pos.r}"][data-c="${pos.c}"] img`
+    : `#bench .cell[data-i="${pos.i}"] img`;
+  const el = document.querySelector(selector);
+  if (el) { el.classList.add('merge-flash'); setTimeout(() => el.classList.remove('merge-flash'), 500); }
+}
+
+// =========== ROUND ===========
+function startRound() {
+  G.round++;
+
+  const income = Math.min(BASE_INCOME + G.round, 10);
+  const interest = Math.min(Math.floor(G.gold * INTEREST_RATE), MAX_INTEREST);
+  G.gold += income + interest;
+
+  addXp(XP_PER_ROUND);
+
+  const freeCount = G.round <= 2 ? 3 : 2;
+  let placed = 0;
+  for (let i = 0; i < freeCount; i++) {
+    const slot = firstEmptyBench();
+    if (!slot) break;
+    const lineIdx = Math.floor(Math.random() * LINES.length);
+    let star = 1;
+    if (G.round >= 10 && Math.random() < 0.1) star = 2;
+    setAt(slot, createPokemon(lineIdx, star));
+    placed++;
+  }
+
+  rollShop();
+  G.phase = 'prep';
+  G.selected = null;
+
+  const infoEl = document.getElementById('round-info');
+  infoEl.innerHTML = `+<span class="income">${income + interest}g</span> (${income} base + ${interest} int) · +${XP_PER_ROUND} XP · <span class="free">${placed}</span> free`;
+  infoEl.classList.add('active');
+
+  render();
+}
+
+// =========== ENEMY GENERATION ===========
+function generateEnemies(round) {
+  const enemies = [];
+  let budget = Math.floor(round * 1.8 + 2);
+  while (budget > 0) {
+    let star = 1;
+    if (budget >= 4 && round >= 8 && Math.random() < 0.25) { star = 3; budget -= 4; }
+    else if (budget >= 2 && round >= 3 && Math.random() < 0.35) { star = 2; budget -= 2; }
+    else { budget -= 1; }
+    enemies.push(createPokemon(Math.floor(Math.random() * LINES.length), star));
+  }
+  return enemies;
+}
+
+// =========== BATTLE ===========
+function startBattle() {
+  if (G.phase !== 'prep') return;
+  const team = fieldPokemon();
+  if (team.length === 0) return;
+
+  G.phase = 'battle';
+  G.selected = null;
+  G.battleOver = false;
+  document.getElementById('round-info').classList.remove('active');
+
+  const arenaEl = document.getElementById('arena');
+  arenaEl.classList.add('active');
+  arenaEl.querySelectorAll('.battle-unit, .damage-number, .battle-result-overlay').forEach(e => e.remove());
+
+  const arenaW = arenaEl.offsetWidth;
+  const arenaH = arenaEl.offsetHeight;
+
+  const enemies = generateEnemies(G.round);
+  const playerUnits = team.map((p, i) => makeBattleUnit(p, 'player', i, team.length, arenaW, arenaH));
+  const enemyUnits = enemies.map((p, i) => makeBattleUnit(p, 'enemy', i, enemies.length, arenaW, arenaH));
+
+  G.battleUnits = [...playerUnits, ...enemyUnits];
+  G.battleUnits.forEach(u => {
+    u.element = createBattleUnitEl(u);
+    arenaEl.appendChild(u.element);
+    updateBattleUnitEl(u);
+  });
+
+  render();
+  let lastTime = performance.now();
+
+  function tick(now) {
+    if (G.battleOver) return;
+    const dt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    const alive = G.battleUnits.filter(u => u.currentHp > 0);
+    const friends = alive.filter(u => u.team === 'player');
+    const foes = alive.filter(u => u.team === 'enemy');
+
+    if (friends.length === 0 || foes.length === 0) {
+      endBattle(friends.length > 0, foes);
+      return;
+    }
+
+    alive.forEach(u => {
+      const targets = u.team === 'player' ? foes : friends;
+      if (!u.target || u.target.currentHp <= 0) u.target = nearestUnit(u, targets);
+      if (!u.target) return;
+
+      const dx = u.target.x - u.x;
+      const dy = u.target.y - u.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > 48) {
+        const spd = 80 * G.battleSpeed;
+        u.x += (dx / dist) * spd * dt;
+        u.y += (dy / dist) * spd * dt;
+      } else {
+        u.atkTimer += dt * G.battleSpeed;
+        if (u.atkTimer >= u.spd) {
+          u.atkTimer = 0;
+          performAttack(u, u.target, arenaEl);
+        }
+      }
+      updateBattleUnitEl(u);
+    });
+
+    G.battleAnimId = requestAnimationFrame(tick);
+  }
+  G.battleAnimId = requestAnimationFrame(tick);
+}
+
+function makeBattleUnit(pkmn, team, index, total, arenaW, arenaH) {
+  const unitH = 65;
+  const pad = 12;
+  const avail = arenaH - pad * 2;
+  const spacing = Math.min(avail / Math.max(total, 1), unitH);
+  const totalH = spacing * total;
+  const startY = (arenaH - totalH) / 2;
+  return {
+    ...pkmn, team,
+    x: team === 'player' ? 25 + Math.random() * 20 : arenaW - 80 + Math.random() * 20,
+    y: startY + spacing * index,
+    currentHp: pkmn.hp, maxHp: pkmn.hp,
+    atkTimer: Math.random() * pkmn.spd * 0.5,
+    target: null, element: null
+  };
+}
+
+function nearestUnit(unit, list) {
+  let best = null, bestD = Infinity;
+  list.forEach(f => {
+    if (f.currentHp <= 0) return;
+    const d = Math.hypot(f.x - unit.x, f.y - unit.y);
+    if (d < bestD) { bestD = d; best = f; }
+  });
+  return best;
+}
+
+function performAttack(attacker, target, arenaEl) {
+  const mult = typeMult(attacker.type, target.type);
+  const dmg = Math.max(1, Math.round(attacker.atk * mult));
+  target.currentHp = Math.max(0, target.currentHp - dmg);
+
+  if (attacker.element) {
+    attacker.element.classList.add('attacking');
+    setTimeout(() => attacker.element && attacker.element.classList.remove('attacking'), 100);
+  }
+
+  const numEl = document.createElement('div');
+  numEl.className = 'damage-number' + (mult > 1 ? ' effective' : '');
+  numEl.textContent = dmg;
+  numEl.style.left = (target.x + 8) + 'px';
+  numEl.style.top = (target.y - 5) + 'px';
+  arenaEl.appendChild(numEl);
+  setTimeout(() => numEl.remove(), 800);
+
+  if (target.currentHp <= 0 && target.element) target.element.classList.add('fainted');
+  updateBattleUnitEl(target);
+}
+
+function createBattleUnitEl(unit) {
+  const el = document.createElement('div');
+  el.className = 'battle-unit' + (unit.team === 'enemy' ? ' enemy' : '');
+
+  const img = document.createElement('img');
+  img.src = spriteUrl(unit.spriteId);
+  el.appendChild(img);
+
+  const stars = document.createElement('div');
+  stars.style.cssText = 'font-size:8px;color:' + (unit.star >= 3 ? '#ff4444' : 'var(--gold)');
+  stars.textContent = '★'.repeat(unit.star);
+  el.appendChild(stars);
+
+  const hpWrap = document.createElement('div');
+  hpWrap.className = 'unit-hp-bar';
+  const hpFill = document.createElement('div');
+  hpFill.className = 'unit-hp-fill';
+  hpWrap.appendChild(hpFill);
+  el.appendChild(hpWrap);
+
+  return el;
+}
+
+function updateBattleUnitEl(unit) {
+  if (!unit.element) return;
+  unit.element.style.left = unit.x + 'px';
+  unit.element.style.top = unit.y + 'px';
+  const fill = unit.element.querySelector('.unit-hp-fill');
+  if (fill) {
+    const pct = Math.max(0, unit.currentHp / unit.maxHp * 100);
+    fill.style.width = pct + '%';
+    fill.classList.toggle('low', pct < 35);
+  }
+}
+
+function endBattle(playerWon, surviving) {
+  G.battleOver = true;
+  if (G.battleAnimId) cancelAnimationFrame(G.battleAnimId);
+
+  const arenaEl = document.getElementById('arena');
+  let hpLost = 0;
+
+  if (!playerWon) {
+    surviving.forEach(e => { hpLost += e.star * 3 + G.round; });
+    G.hp = Math.max(0, G.hp - hpLost);
+    G.streak = 0;
+  } else {
+    G.gold += WIN_BONUS;
+    G.streak++;
+    if (G.streak >= 3) G.gold += 1;
+  }
+
+  const ov = document.createElement('div');
+  ov.className = 'battle-result-overlay';
+  ov.innerHTML = playerWon
+    ? `<h2 class="win">VICTORY!</h2><p>+${WIN_BONUS}${G.streak >= 3 ? '+1 streak' : ''} gold</p>`
+    : `<h2 class="lose">DEFEAT</h2><p>-${hpLost} HP</p>`;
+  arenaEl.appendChild(ov);
+  render();
+
+  setTimeout(() => {
+    arenaEl.classList.remove('active');
+    arenaEl.querySelectorAll('.battle-unit, .damage-number, .battle-result-overlay').forEach(e => e.remove());
+    if (G.hp <= 0) showGameOver();
+    else startRound();
+  }, 2000);
+}
+
+// =========== RENDER ===========
+function render() {
+  renderHeader();
+  renderField();
+  renderBench();
+  renderSellZone();
+  renderShop();
+  renderControls();
+  renderPhaseBanner();
+}
+
+function renderHeader() {
+  document.getElementById('round-num').textContent = G.round;
+  document.getElementById('level-num').textContent = G.level;
+
+  const xpBar = document.getElementById('xp-bar');
+  if (G.level >= MAX_LEVEL) {
+    xpBar.style.width = '100%';
+  } else {
+    xpBar.style.width = (G.xp / XP_TO_NEXT[G.level] * 100) + '%';
+  }
+
+  const hpPct = G.hp / G.maxHp * 100;
+  document.getElementById('hp-bar').style.width = hpPct + '%';
+  document.getElementById('hp-text').textContent = G.hp + '/' + G.maxHp;
+  document.getElementById('gold-display').textContent = G.gold + 'g';
+}
+
+function renderPhaseBanner() {
+  const el = document.getElementById('phase-banner');
+  if (G.phase === 'prep') {
+    el.textContent = 'PREP — Buy, merge & arrange your team';
+    el.className = 'phase-banner';
+  } else if (G.phase === 'battle') {
+    el.textContent = 'BATTLE!';
+    el.className = 'phase-banner battle';
+  } else {
+    el.textContent = '';
+  }
+}
+
+function renderField() {
+  const grid = document.getElementById('field');
+  grid.innerHTML = '';
+
+  const fc = fieldCount();
+  const countEl = document.getElementById('field-count');
+  countEl.textContent = `(${fc}/${G.level})`;
+  countEl.classList.toggle('full', fc >= G.level);
+
+  for (let r = 0; r < FIELD_ROWS; r++) {
+    for (let c = 0; c < FIELD_COLS; c++) {
+      const pos = { area: 'field', r, c };
+      const cell = makeCellEl(pos, G.field[r][c]);
+      grid.appendChild(cell);
+    }
+  }
+}
+
+function renderBench() {
+  const grid = document.getElementById('bench');
+  grid.innerHTML = '';
+
+  const benchHint = document.getElementById('bench-hint');
+  const emptyCount = G.bench.filter(b => !b).length;
+  benchHint.textContent = emptyCount === 0 ? 'Full!' : '';
+
+  for (let i = 0; i < BENCH_SIZE; i++) {
+    const pos = { area: 'bench', i };
+    const cell = makeCellEl(pos, G.bench[i]);
+    grid.appendChild(cell);
+  }
+}
+
+function makeCellEl(pos, pkmn) {
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+
+  if (pos.area === 'field') {
+    cell.dataset.r = pos.r;
+    cell.dataset.c = pos.c;
+    cell.dataset.area = 'field';
+  } else {
+    cell.dataset.i = pos.i;
+    cell.dataset.area = 'bench';
+  }
+
+  if (pkmn) {
+    const isSel = G.selected && samePos(G.selected, pos);
+    if (isSel) cell.classList.add('selected');
+
+    if (G.selected && !isSel) {
+      const selPkmn = getAt(G.selected);
+      if (selPkmn && pkmn.lineIdx === selPkmn.lineIdx && pkmn.star === selPkmn.star && pkmn.star < 3) {
+        cell.classList.add('merge-target');
+      }
+    }
+
+    const stars = document.createElement('div');
+    stars.className = 'stars';
+    stars.textContent = '★'.repeat(pkmn.star);
+    if (pkmn.star >= 3) stars.style.color = '#ff4444';
+    cell.appendChild(stars);
+
+    const img = document.createElement('img');
+    img.src = spriteUrl(pkmn.spriteId);
+    img.alt = pkmn.name;
+    img.draggable = false;
+    cell.appendChild(img);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'pkmn-name';
+    nameEl.textContent = pkmn.name;
+    cell.appendChild(nameEl);
+
+    const badge = document.createElement('div');
+    badge.className = 'type-badge';
+    badge.textContent = pkmn.type;
+    badge.style.background = TYPE_COLORS[pkmn.type] || '#666';
+    cell.appendChild(badge);
+  } else {
+    cell.classList.add('empty');
+  }
+
+  cell.addEventListener('click', () => handleCellClick(pos));
+  return cell;
+}
+
+function renderSellZone() {
+  const el = document.getElementById('sell-zone');
+  if (G.phase !== 'prep') { el.classList.remove('visible'); return; }
+
+  if (G.selected && getAt(G.selected)) {
+    const pkmn = getAt(G.selected);
+    el.textContent = `SELL ${pkmn.name} (+${pkmn.cost * pkmn.star}g)`;
+    el.classList.add('visible');
+  } else {
+    el.classList.remove('visible');
+  }
+}
+
+function renderShop() {
+  const shopEl = document.getElementById('shop');
+  const hintEl = document.getElementById('shop-hint');
+  shopEl.innerHTML = '';
+
+  if (G.phase !== 'prep') {
+    document.getElementById('shop-wrap').style.display = 'none';
+    return;
+  }
+  document.getElementById('shop-wrap').style.display = '';
+  const benchFull = !firstEmptyBench();
+  hintEl.textContent = benchFull ? 'Bench full!' : '';
+
+  G.shop.forEach((pkmn, i) => {
+    const card = document.createElement('div');
+    card.className = 'shop-card';
+    if (G.shopSold[i]) card.classList.add('sold');
+    else if (G.gold < pkmn.cost || benchFull) card.classList.add('cant-afford');
+
+    const img = document.createElement('img');
+    img.src = spriteUrl(pkmn.spriteId);
+    img.draggable = false;
+    card.appendChild(img);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'card-name';
+    nameEl.textContent = pkmn.name;
+    card.appendChild(nameEl);
+
+    const costEl = document.createElement('div');
+    costEl.className = 'card-cost';
+    costEl.textContent = pkmn.cost + 'g';
+    card.appendChild(costEl);
+
+    card.addEventListener('click', () => buyPokemon(i));
+    shopEl.appendChild(card);
+  });
+}
+
+function renderControls() {
+  const el = document.getElementById('controls');
+  el.innerHTML = '';
+
+  if (G.phase === 'prep') {
+    const xpBtn = document.createElement('button');
+    xpBtn.className = 'btn btn-xp';
+    if (G.level >= MAX_LEVEL) {
+      xpBtn.innerHTML = 'MAX<span class="sub">Lv ' + G.level + '</span>';
+      xpBtn.disabled = true;
+    } else {
+      xpBtn.innerHTML = 'Buy XP<span class="sub">' + XP_BUY_COST + 'g → ' + XP_BUY_AMOUNT + ' XP</span>';
+      xpBtn.disabled = G.gold < XP_BUY_COST;
+    }
+    xpBtn.addEventListener('click', buyXp);
+    el.appendChild(xpBtn);
+
+    const reroll = document.createElement('button');
+    reroll.className = 'btn';
+    reroll.innerHTML = 'Reroll<span class="sub">' + REROLL_COST + 'g</span>';
+    reroll.addEventListener('click', rerollShop);
+    el.appendChild(reroll);
+
+    if (G.selected && getAt(G.selected)) {
+      const sell = document.createElement('button');
+      sell.className = 'btn btn-sell';
+      const p = getAt(G.selected);
+      sell.textContent = 'Sell +' + (p.cost * p.star) + 'g';
+      sell.addEventListener('click', sellSelected);
+      el.appendChild(sell);
+    }
+
+    const battle = document.createElement('button');
+    battle.className = 'btn btn-battle';
+    battle.textContent = 'BATTLE!';
+    battle.disabled = fieldPokemon().length === 0;
+    battle.addEventListener('click', startBattle);
+    el.appendChild(battle);
+  } else if (G.phase === 'battle') {
+    const speedBtn = document.createElement('button');
+    speedBtn.className = 'btn';
+    speedBtn.textContent = 'Speed: ' + G.battleSpeed + 'x';
+    speedBtn.addEventListener('click', () => {
+      G.battleSpeed = G.battleSpeed >= 3 ? 1 : G.battleSpeed + 1;
+      speedBtn.textContent = 'Speed: ' + G.battleSpeed + 'x';
+    });
+    el.appendChild(speedBtn);
+  }
+}
+
+// =========== OVERLAYS ===========
+function showStartScreen() {
+  const el = document.getElementById('overlay');
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <h1>Pokémon Merge Tactics</h1>
+    <p style="color:var(--text-dim);margin-bottom:16px">Merge · Evolve · Battle!</p>
+    <div style="display:flex;gap:8px;margin-bottom:16px;opacity:0.6">
+      <img src="${spriteUrl(6)}" style="width:44px;height:44px;image-rendering:pixelated" alt="">
+      <img src="${spriteUrl(9)}" style="width:44px;height:44px;image-rendering:pixelated" alt="">
+      <img src="${spriteUrl(3)}" style="width:44px;height:44px;image-rendering:pixelated" alt="">
+      <img src="${spriteUrl(26)}" style="width:44px;height:44px;image-rendering:pixelated" alt="">
+    </div>
+    <p style="font-size:11px;max-width:320px;text-align:center;margin-bottom:20px;color:var(--text-dim)">
+      Buy Pokémon → they go to your <b>bench</b>.<br>
+      Move them to the <b>field</b> to fight.<br>
+      Merge two identical ones to <b>evolve</b>!<br>
+      Level up to field more Pokémon.
+    </p>
+    <button class="btn-start" id="start-btn">START GAME</button>
+  `;
+  document.getElementById('start-btn').addEventListener('click', () => {
+    el.style.display = 'none';
+    initGameState();
+    startRound();
+  });
+}
+
+function showGameOver() {
+  G.phase = 'gameover';
+  const el = document.getElementById('overlay');
+  el.style.display = 'flex';
+  const team = fieldPokemon();
+  el.innerHTML = `
+    <h2 style="color:var(--hp-red)">GAME OVER</h2>
+    <p>Reached Round ${G.round} · Level ${G.level}</p>
+    <p style="color:var(--text);margin-bottom:20px">Team: ${team.map(p => p.name).join(', ') || 'none'}</p>
+    <button class="btn-start" id="restart-btn">PLAY AGAIN</button>
+  `;
+  document.getElementById('restart-btn').addEventListener('click', () => {
+    el.style.display = 'none';
+    initGameState();
+    startRound();
+  });
+}
+
+// =========== DRAG & DROP ===========
+let dragState = null;
+let justDragged = false;
+
+function posFromCellEl(cellEl) {
+  if (!cellEl) return null;
+  if (cellEl.dataset.area === 'field')
+    return { area: 'field', r: +cellEl.dataset.r, c: +cellEl.dataset.c };
+  if (cellEl.dataset.area === 'bench')
+    return { area: 'bench', i: +cellEl.dataset.i };
+  return null;
+}
+
+function setupDragDrop() {
+  document.addEventListener('pointerdown', (e) => {
+    if (G.phase !== 'prep') return;
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    const pos = posFromCellEl(cell);
+    if (!pos) return;
+    const pkmn = getAt(pos);
+    if (!pkmn) return;
+
+    dragState = { pos, pkmn, startX: e.clientX, startY: e.clientY, dragging: false, ghost: null };
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    if (!dragState.dragging && (Math.abs(dx) + Math.abs(dy)) < 8) return;
+
+    if (!dragState.dragging) {
+      dragState.dragging = true;
+      const ghost = document.createElement('div');
+      ghost.style.cssText = 'position:fixed;pointer-events:none;z-index:999;opacity:0.8;';
+      const img = document.createElement('img');
+      img.src = spriteUrl(dragState.pkmn.spriteId);
+      img.style.cssText = 'width:48px;height:48px;image-rendering:pixelated;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.5));';
+      ghost.appendChild(img);
+      document.body.appendChild(ghost);
+      dragState.ghost = ghost;
+    }
+
+    dragState.ghost.style.left = (e.clientX - 24) + 'px';
+    dragState.ghost.style.top = (e.clientY - 24) + 'px';
+
+    document.querySelectorAll('.cell.merge-target, .cell.selected').forEach(c => c.classList.remove('merge-target', 'selected'));
+
+    const hoverEl = document.elementFromPoint(e.clientX, e.clientY);
+    const hoverCell = hoverEl?.closest('.cell');
+    if (hoverCell) {
+      const hPos = posFromCellEl(hoverCell);
+      if (hPos && !samePos(hPos, dragState.pos)) {
+        const hPkmn = getAt(hPos);
+        if (hPkmn && hPkmn.lineIdx === dragState.pkmn.lineIdx && hPkmn.star === dragState.pkmn.star && hPkmn.star < 3) {
+          hoverCell.classList.add('merge-target');
+        }
+      }
+    }
+
+    const sellZone = document.getElementById('sell-zone');
+    const overSell = hoverEl?.closest('.sell-zone');
+    sellZone.classList.toggle('drag-hover', !!overSell);
+    if (dragState.dragging && !sellZone.classList.contains('visible')) {
+      sellZone.textContent = `SELL ${dragState.pkmn.name} (+${dragState.pkmn.cost * dragState.pkmn.star}g)`;
+      sellZone.classList.add('visible');
+    }
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (!dragState) return;
+    const ds = dragState;
+    dragState = null;
+
+    document.getElementById('sell-zone').classList.remove('drag-hover');
+
+    if (ds.ghost) ds.ghost.remove();
+    if (!ds.dragging) return;
+    justDragged = true;
+    setTimeout(() => justDragged = false, 50);
+
+    const dropEl = document.elementFromPoint(e.clientX, e.clientY);
+
+    if (dropEl?.closest('.sell-zone')) {
+      sellAt(ds.pos);
+      return;
+    }
+
+    const dropCell = dropEl?.closest('.cell');
+    if (dropCell) {
+      const dropPos = posFromCellEl(dropCell);
+      if (dropPos && !samePos(dropPos, ds.pos)) {
+        const srcPkmn = getAt(ds.pos);
+        const dropPkmn = getAt(dropPos);
+        if (!srcPkmn) { render(); return; }
+
+        if (dropPkmn && srcPkmn.lineIdx === dropPkmn.lineIdx && srcPkmn.star === dropPkmn.star && srcPkmn.star < 3) {
+          clearAt(ds.pos);
+          setAt(dropPos, createPokemon(srcPkmn.lineIdx, srcPkmn.star + 1));
+          G.selected = null;
+          render();
+          triggerMergeFlash(dropPos);
+          return;
+        }
+
+        if (!dropPkmn) {
+          if (dropPos.area === 'field' && !canPlaceOnField(ds.pos)) { render(); return; }
+          setAt(dropPos, srcPkmn);
+          clearAt(ds.pos);
+        } else {
+          setAt(ds.pos, dropPkmn);
+          setAt(dropPos, srcPkmn);
+        }
+        G.selected = null;
+      }
+    }
+    render();
+  });
+
+  document.getElementById('sell-zone').addEventListener('click', () => {
+    if (G.selected) sellSelected();
+  });
+
+  document.getElementById('level-badge').addEventListener('click', buyXp);
+}
+
+// =========== PRELOAD ===========
+function preloadSprites() {
+  LINES.forEach(line => line.ids.forEach(id => { new Image().src = spriteUrl(id); }));
+}
+
+// =========== INIT ===========
+window.addEventListener('load', () => {
+  preloadSprites();
+  initGameState();
+  setupDragDrop();
+  render();
+  showStartScreen();
+});
+</script>
+</body>
+</html>
