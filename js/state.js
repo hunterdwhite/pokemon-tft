@@ -27,7 +27,8 @@ export function initGameState() {
     bench: Array(BENCH_SIZE).fill(null),
     shop: [],
     shopSold: [],
-    phase: 'start',
+    phase: 'mega-pick',
+    chosenMegaLineIdx: null,
     selected: null,
     battleUnits: [],
     battleAnimId: null,
@@ -74,6 +75,15 @@ export function fieldPokemon() {
   return out;
 }
 
+/** Like fieldPokemon but returns [{ pkmn, r, c }] in row-major order for battle positioning/targeting. */
+export function fieldPokemonWithPositions() {
+  const out = [];
+  for (let r = 0; r < FIELD_ROWS; r++)
+    for (let c = 0; c < FIELD_COLS; c++)
+      if (G.field[r][c]) out.push({ pkmn: G.field[r][c], r, c });
+  return out;
+}
+
 export function firstEmptyBench() {
   for (let i = 0; i < BENCH_SIZE; i++)
     if (!G.bench[i]) return { area: 'bench', i };
@@ -100,4 +110,9 @@ export function allPokemon() {
   for (let i = 0; i < BENCH_SIZE; i++)
     if (G.bench[i]) out.push(G.bench[i]);
   return out;
+}
+
+export function hasMega() {
+  const all = allPokemon();
+  return all.some(p => p && p.star === 4);
 }

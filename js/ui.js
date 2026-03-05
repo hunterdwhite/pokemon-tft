@@ -1,7 +1,7 @@
 /** DOM rendering, overlays, and drag/drop. Uses state + data and receives game actions via initUI(actions). */
 
-import { getState, getAt, setAt, clearAt, samePos, fieldCount, fieldPokemon, firstEmptyBench, canPlaceOnField } from './state.js';
-import { spriteUrl, TYPE_COLORS, LINES, XP_TO_NEXT, MAX_LEVEL, XP_BUY_COST, XP_BUY_AMOUNT, REROLL_COST, createPokemon } from './data.js';
+import { getState, getAt, setAt, clearAt, samePos, fieldCount, fieldPokemon, firstEmptyBench, canPlaceOnField, hasMega } from './state.js';
+import { spriteUrl, TYPE_COLORS, LINES, XP_TO_NEXT, MAX_LEVEL, XP_BUY_COST, XP_BUY_AMOUNT, REROLL_COST, createPokemon, getActiveTraits, getActiveRoleTraits, ROLE_COLORS, MEGA_FORMS, FIELD_ROWS, FIELD_COLS } from './data.js';
 
 let actions = {};
 
@@ -13,6 +13,7 @@ export function initUI(a) {
 export function render() {
   const G = getState();
   renderHeader();
+  renderTraits();
   renderField();
   renderBench();
   renderSellZone();
@@ -27,16 +28,81 @@ function renderHeader() {
   document.getElementById('level-num').textContent = G.level;
 
   const xpBar = document.getElementById('xp-bar');
-  if (G.level >= MAX_LEVEL) {
-    xpBar.style.width = '100%';
+  const xpPct = G.level >= MAX_LEVEL ? 100 : (G.xp / XP_TO_NEXT[G.level]) * 100;
+  if (window.anime) {
+    window.anime({
+      targets: xpBar,
+      width: xpPct + '%',
+      duration: 600,
+      easing: 'easeOutQuad'
+    });
   } else {
-    xpBar.style.width = (G.xp / XP_TO_NEXT[G.level]) * 100 + '%';
+    xpBar.style.width = xpPct + '%';
   }
 
   const hpPct = (G.hp / G.maxHp) * 100;
-  document.getElementById('hp-bar').style.width = hpPct + '%';
+  const hpBar = document.getElementById('hp-bar');
+  if (window.anime) {
+    window.anime({
+      targets: hpBar,
+      width: hpPct + '%',
+      duration: 700,
+      easing: 'easeOutQuad'
+    });
+  } else {
+    hpBar.style.width = hpPct + '%';
+  }
   document.getElementById('hp-text').textContent = G.hp + '/' + G.maxHp;
   document.getElementById('gold-display').textContent = G.gold + 'g';
+}
+
+function traitBonusDesc(bonus) {
+  const parts = [];
+  if (bonus.hp) parts.push('+' + Math.round((bonus.hp - 1) * 100) + '% HP');
+  if (bonus.atk) parts.push('+' + Math.round((bonus.atk - 1) * 100) + '% ATK');
+  if (bonus.spAtk) parts.push('+' + Math.round((bonus.spAtk - 1) * 100) + '% SpAtk');
+  if (bonus.spd != null) parts.push('+' + Math.round((1 - bonus.spd) * 100) + '% speed');
+  return parts.join(', ') || 'active';
+}
+
+function roleBonusDesc(bonus) {
+  const parts = [];
+  if (bonus.hp) parts.push('+' + Math.round((bonus.hp - 1) * 100) + '% HP');
+  if (bonus.atk) parts.push('+' + Math.round((bonus.atk - 1) * 100) + '% ATK');
+  if (bonus.spAtk) parts.push('+' + Math.round((bonus.spAtk - 1) * 100) + '% SpAtk');
+  if (bonus.spd != null) parts.push('+' + Math.round((1 - bonus.spd) * 100) + '% speed');
+  return parts.join(', ') || 'active';
+}
+
+function renderTraits() {
+  const G = getState();
+  const row = document.getElementById('traits-row');
+  if (!row) return;
+  const team = fieldPokemon();
+  const typeTraits = getActiveTraits(team);
+  const roleTraits = getActiveRoleTraits(team);
+  row.innerHTML = '';
+  if (typeTraits.length === 0 && roleTraits.length === 0) {
+    row.classList.add('traits-empty');
+    return;
+  }
+  row.classList.remove('traits-empty');
+  typeTraits.forEach(({ type, count, bonus }) => {
+    const badge = document.createElement('span');
+    badge.className = 'trait-badge trait-type';
+    badge.style.backgroundColor = TYPE_COLORS[type] || '#666';
+    badge.title = traitBonusDesc(bonus);
+    badge.innerHTML = `<span class="trait-name">${type}</span> <span class="trait-count">(${count})</span> <span class="trait-desc">${traitBonusDesc(bonus)}</span>`;
+    row.appendChild(badge);
+  });
+  roleTraits.forEach(({ role, count, bonus }) => {
+    const badge = document.createElement('span');
+    badge.className = 'trait-badge trait-role';
+    badge.style.backgroundColor = ROLE_COLORS[role] || '#666';
+    badge.title = roleBonusDesc(bonus);
+    badge.innerHTML = `<span class="trait-name">${role}</span> <span class="trait-count">(2)</span> <span class="trait-desc">${roleBonusDesc(bonus)}</span>`;
+    row.appendChild(badge);
+  });
 }
 
 function renderPhaseBanner() {
@@ -63,8 +129,6 @@ function renderField() {
   countEl.textContent = `(${fc}/${G.level})`;
   countEl.classList.toggle('full', fc >= G.level);
 
-  const FIELD_ROWS = 2;
-  const FIELD_COLS = 4;
   for (let r = 0; r < FIELD_ROWS; r++) {
     for (let c = 0; c < FIELD_COLS; c++) {
       const pos = { area: 'field', r, c };
@@ -111,15 +175,17 @@ function makeCellEl(pos, pkmn) {
 
     if (G.selected && !isSel) {
       const selPkmn = getAt(G.selected);
-      if (selPkmn && pkmn.lineIdx === selPkmn.lineIdx && pkmn.star === selPkmn.star && pkmn.star < 3) {
-        cell.classList.add('merge-target');
-      }
+      const wouldBeMega = pkmn.star === 3 && G.chosenMegaLineIdx === pkmn.lineIdx;
+      const canMergeToHere = selPkmn && pkmn.lineIdx === selPkmn.lineIdx && pkmn.star === selPkmn.star &&
+        (pkmn.star < 3 || (wouldBeMega && !hasMega()));
+      if (canMergeToHere) cell.classList.add('merge-target');
     }
 
     const stars = document.createElement('div');
     stars.className = 'stars';
     stars.textContent = '★'.repeat(pkmn.star);
-    if (pkmn.star >= 3) stars.style.color = '#ff4444';
+    if (pkmn.star >= 4) stars.style.color = '#c070ff';
+    else if (pkmn.star >= 3) stars.style.color = '#ff4444';
     cell.appendChild(stars);
 
     const img = document.createElement('img');
@@ -138,6 +204,15 @@ function makeCellEl(pos, pkmn) {
     badge.textContent = pkmn.type;
     badge.style.background = TYPE_COLORS[pkmn.type] || '#666';
     cell.appendChild(badge);
+
+    if (pkmn.role) {
+      const roleBadge = document.createElement('div');
+      roleBadge.className = 'role-badge';
+      roleBadge.textContent = pkmn.role;
+      roleBadge.style.background = ROLE_COLORS[pkmn.role] || '#666';
+      roleBadge.title = 'Role: ' + pkmn.role;
+      cell.appendChild(roleBadge);
+    }
   } else {
     cell.classList.add('empty');
   }
@@ -192,6 +267,15 @@ function renderShop() {
     nameEl.className = 'card-name';
     nameEl.textContent = pkmn.name;
     card.appendChild(nameEl);
+
+    if (pkmn.role) {
+      const roleEl = document.createElement('div');
+      roleEl.className = 'card-role';
+      roleEl.textContent = pkmn.role;
+      roleEl.style.background = ROLE_COLORS[pkmn.role] || '#666';
+      roleEl.title = 'Role: ' + pkmn.role;
+      card.appendChild(roleEl);
+    }
 
     const costEl = document.createElement('div');
     costEl.className = 'card-cost';
@@ -275,9 +359,46 @@ export function showStartScreen() {
     <button class="btn-start" id="start-btn">START GAME</button>
   `;
   document.getElementById('start-btn').addEventListener('click', () => {
-    el.style.display = 'none';
     actions.initGameState();
-    actions.startRound();
+    showMegaPickScreen();
+  });
+}
+
+export function hideOverlay() {
+  const el = document.getElementById('overlay');
+  if (el) el.style.display = 'none';
+}
+
+export function showMegaPickScreen() {
+  const el = document.getElementById('overlay');
+  el.style.display = 'flex';
+  let selectedLineIdx = null;
+  const optionsHtml = MEGA_FORMS.map(m => `
+    <button class="mega-pick-card" data-line-idx="${m.lineIdx}" type="button">
+      <img src="${spriteUrl(m.spriteId)}" alt="${m.name}" />
+      <span class="mega-pick-name">${m.name}</span>
+    </button>
+  `).join('');
+  el.innerHTML = `
+    <h1>Choose your Mega Evolution</h1>
+    <p style="color:var(--text-dim);margin-bottom:12px;font-size:13px">Pick the one evolution line that can reach 4★ (Mega) this run. Only this line can merge two 3★ into a Mega.</p>
+    <div class="mega-pick-grid" id="mega-pick-grid">${optionsHtml}</div>
+    <button class="btn-start" id="mega-confirm-btn" disabled>Confirm</button>
+  `;
+  const grid = document.getElementById('mega-pick-grid');
+  const confirmBtn = document.getElementById('mega-confirm-btn');
+  grid.querySelectorAll('.mega-pick-card').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedLineIdx = parseInt(btn.dataset.lineIdx, 10);
+      grid.querySelectorAll('.mega-pick-card').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      confirmBtn.disabled = false;
+    });
+  });
+  confirmBtn.addEventListener('click', () => {
+    if (selectedLineIdx == null) return;
+    actions.onMegaChosen(selectedLineIdx);
+    hideOverlay();
   });
 }
 
@@ -296,7 +417,7 @@ export function showGameOver() {
   document.getElementById('restart-btn').addEventListener('click', () => {
     el.style.display = 'none';
     actions.initGameState();
-    actions.startRound();
+    showStartScreen();
   });
 }
 
@@ -355,9 +476,11 @@ function setupDragDrop() {
       const hPos = posFromCellEl(hoverCell);
       if (hPos && !samePos(hPos, dragState.pos)) {
         const hPkmn = getAt(hPos);
-        if (hPkmn && hPkmn.lineIdx === dragState.pkmn.lineIdx && hPkmn.star === dragState.pkmn.star && hPkmn.star < 3) {
-          hoverCell.classList.add('merge-target');
-        }
+        const G = getState();
+        const wouldBeMega = hPkmn.star === 3 && G.chosenMegaLineIdx === hPkmn.lineIdx;
+        const canMerge = hPkmn && hPkmn.lineIdx === dragState.pkmn.lineIdx && hPkmn.star === dragState.pkmn.star &&
+          (hPkmn.star < 3 || (wouldBeMega && !hasMega()));
+        if (canMerge) hoverCell.classList.add('merge-target');
       }
     }
 
@@ -400,7 +523,10 @@ function setupDragDrop() {
           return;
         }
 
-        if (dropPkmn && srcPkmn.lineIdx === dropPkmn.lineIdx && srcPkmn.star === dropPkmn.star && srcPkmn.star < 3) {
+        const wouldBeMega = srcPkmn.star === 3 && getState().chosenMegaLineIdx === srcPkmn.lineIdx;
+        const canMergeUp = dropPkmn && srcPkmn.lineIdx === dropPkmn.lineIdx && srcPkmn.star === dropPkmn.star &&
+          (srcPkmn.star < 3 || (wouldBeMega && !hasMega()));
+        if (canMergeUp) {
           clearAt(ds.pos);
           setAt(dropPos, createPokemon(srcPkmn.lineIdx, srcPkmn.star + 1));
           getState().selected = null;

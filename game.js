@@ -111,9 +111,13 @@ function handleCellClick(pos) {
       return;
     }
 
-    if (clicked && selPkmn.lineIdx === clicked.lineIdx && selPkmn.star === clicked.star && selPkmn.star < 3) {
+    const wouldBeMega = selPkmn.star === 3 && G.chosenMegaLineIdx === selPkmn.lineIdx;
+    const canMergeUp = clicked && selPkmn.lineIdx === clicked.lineIdx && selPkmn.star === clicked.star &&
+      (selPkmn.star < 3 || (wouldBeMega && !state.hasMega()));
+    if (canMergeUp) {
+      const nextStar = selPkmn.star + 1;
       state.clearAt(sel);
-      const evolved = createPokemon(selPkmn.lineIdx, selPkmn.star + 1);
+      const evolved = createPokemon(selPkmn.lineIdx, nextStar);
       state.setAt(pos, evolved);
       G.selected = null;
       render();
@@ -176,9 +180,22 @@ function triggerMergeFlash(pos) {
       ? `#field .cell[data-r="${pos.r}"][data-c="${pos.c}"] img`
       : `#bench .cell[data-i="${pos.i}"] img`;
   const el = document.querySelector(selector);
-  if (el) {
+  if (!el) return;
+
+  if (window.anime) {
+    const cell = el.closest('.cell');
+    const target = cell || el;
+    window.anime({
+      targets: target,
+      scale: [0.3, 1.4, 1],
+      opacity: [0, 1, 1],
+      duration: 900,
+      delay: 80,
+      easing: 'easeOutElastic(1, 0.5)'
+    });
+  } else {
     el.classList.add('merge-flash');
-    setTimeout(() => el.classList.remove('merge-flash'), 500);
+    setTimeout(() => el.classList.remove('merge-flash'), 900);
   }
 }
 
@@ -223,6 +240,15 @@ function startBattle() {
   });
 }
 
+function onMegaChosen(lineIdx) {
+  const G = state.getState();
+  G.chosenMegaLineIdx = lineIdx;
+  G.phase = 'prep';
+  startRound();
+  render();
+  ui.hideOverlay();
+}
+
 const actions = {
   buyXp,
   buyPokemon,
@@ -233,6 +259,7 @@ const actions = {
   startBattle,
   initGameState: state.initGameState,
   startRound,
+  onMegaChosen,
   triggerMergeFlash,
   setJustDragged,
   render

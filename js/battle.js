@@ -1,8 +1,11 @@
 /** Battle loop, units, attacks, and end-of-battle flow. */
 
 import { getState } from './state.js';
-import { fieldPokemon } from './state.js';
-import { typeMult, createPokemon, spriteUrl, LINES, WIN_BONUS } from './data.js';
+import { fieldPokemon, fieldPokemonWithPositions } from './state.js';
+import { typeMult, createPokemon, spriteUrl, LINES, WIN_BONUS, TYPE_COLORS, getActiveTraits, getActiveRoleTraits, applyTraitsToUnit, FIELD_ROWS, FIELD_COLS } from './data.js';
+
+const PROJECTILE_SPEED = 220;
+const PROJECTILE_HIT_RADIUS = 14;
 
 function generateEnemies(round) {
   const enemies = [];
@@ -23,60 +26,133 @@ function generateEnemies(round) {
   return enemies;
 }
 
-function makeBattleUnit(pkmn, team, index, total, arenaW, arenaH) {
-  const unitH = 65;
+const ROW_OFFSET = 32; // x stagger per row toward center (more staggered)
+const ROW_STAGGER_Y = 12; // extra y offset per row so rows don't line up vertically
+
+function makeBattleUnit(pkmn, team, index, total, arenaW, arenaH, row = 0, col = 0) {
   const pad = 12;
   const avail = arenaH - pad * 2;
-  const spacing = Math.min(avail / Math.max(total, 1), unitH);
-  const totalH = spacing * total;
-  const startY = (arenaH - totalH) / 2;
+  const isRanged = (pkmn.spAtk || 0) > (pkmn.atk || 0);
+  const maxRow = Math.max(1, FIELD_ROWS - 1);
+  const jitter = 4;
+  const baseXPlayer = 18;
+  const baseXEnemy = arenaW - 88;
+  const xPlayer = baseXPlayer + (maxRow - row) * ROW_OFFSET + (Math.random() * 2 - 1) * jitter;
+  const xEnemy = baseXEnemy - (maxRow - row) * ROW_OFFSET + (Math.random() * 2 - 1) * jitter;
+  const colSpacing = avail / Math.max(FIELD_COLS - 1, 1);
+  const yFromCol = pad + col * colSpacing + (Math.random() * 2 - 1) * 3;
+  const yStagger = row * ROW_STAGGER_Y;
+  const y = yFromCol + yStagger;
   return {
     ...pkmn,
     team,
-    x: team === 'player' ? 25 + Math.random() * 20 : arenaW - 80 + Math.random() * 20,
-    y: startY + spacing * index,
+    row,
+    col,
+    x: team === 'player' ? xPlayer : xEnemy,
+    y,
     currentHp: pkmn.hp,
     maxHp: pkmn.hp,
     atkTimer: Math.random() * pkmn.spd * 0.5,
     target: null,
-    element: null
+    element: null,
+    isRanged
   };
 }
 
+/** Pick target: prefer front row (row 0) then next rows, then by distance. */
 function nearestUnit(unit, list) {
-  let best = null;
-  let bestD = Infinity;
-  list.forEach(f => {
-    if (f.currentHp <= 0) return;
-    const d = Math.hypot(f.x - unit.x, f.y - unit.y);
-    if (d < bestD) {
-      bestD = d;
-      best = f;
-    }
+  const alive = list.filter(f => f.currentHp > 0);
+  if (alive.length === 0) return null;
+  alive.sort((a, b) => {
+    if (a.row !== b.row) return a.row - b.row;
+    const dA = Math.hypot(a.x - unit.x, a.y - unit.y);
+    const dB = Math.hypot(b.x - unit.x, b.y - unit.y);
+    return dA - dB;
   });
-  return best;
+  return alive[0];
 }
 
-function performAttack(attacker, target, arenaEl) {
+function spawnProjectile(attacker, target, arenaEl, projectiles) {
   const mult = typeMult(attacker.type, target.type);
-  const dmg = Math.max(1, Math.round(attacker.atk * mult));
-  target.currentHp = Math.max(0, target.currentHp - dmg);
+  const dmg = Math.max(1, Math.round((attacker.spAtk || attacker.atk) * mult));
+  const dx = target.x + 22 - attacker.x - 22;
+  const dy = target.y + 22 - attacker.y - 22;
+  const dist = Math.hypot(dx, dy) || 1;
+  const vx = (dx / dist) * PROJECTILE_SPEED;
+  const vy = (dy / dist) * PROJECTILE_SPEED;
 
-  if (attacker.element) {
-    attacker.element.classList.add('attacking');
-    setTimeout(() => attacker.element && attacker.element.classList.remove('attacking'), 100);
-  }
+  const el = document.createElement('div');
+  el.className = 'battle-projectile';
+  el.style.left = (attacker.x + 22 - 8) + 'px';
+  el.style.top = (attacker.y + 22 - 8) + 'px';
+  el.style.backgroundColor = TYPE_COLORS[attacker.type] || '#aaa';
+  el.style.color = TYPE_COLORS[attacker.type] || '#aaa';
+  arenaEl.appendChild(el);
 
+  projectiles.push({
+    x: attacker.x + 22,
+    y: attacker.y + 22,
+    tx: target.x + 22,
+    ty: target.y + 22,
+    vx,
+    vy,
+    target,
+    dmg,
+    mult,
+    element: el
+  });
+}
+
+function showDamageNumber(target, dmg, mult, arenaEl) {
   const numEl = document.createElement('div');
   numEl.className = 'damage-number' + (mult > 1 ? ' effective' : '');
   numEl.textContent = dmg;
   numEl.style.left = (target.x + 8) + 'px';
   numEl.style.top = (target.y - 5) + 'px';
   arenaEl.appendChild(numEl);
-  setTimeout(() => numEl.remove(), 800);
+  if (window.anime) {
+    window.anime({
+      targets: numEl,
+      translateY: -70,
+      opacity: [1, 0],
+      scale: [1, 1.4],
+      duration: 1400,
+      easing: 'easeOutCubic',
+      complete: () => numEl.remove()
+    });
+  } else {
+    setTimeout(() => numEl.remove(), 1400);
+  }
+}
 
+function applyDamageToTarget(target, dmg, mult, arenaEl) {
+  target.currentHp = Math.max(0, target.currentHp - dmg);
+  showDamageNumber(target, dmg, mult, arenaEl);
   if (target.currentHp <= 0 && target.element) target.element.classList.add('fainted');
   updateBattleUnitEl(target);
+}
+
+function performAttack(attacker, target, arenaEl) {
+  const mult = typeMult(attacker.type, target.type);
+  const dmg = Math.max(1, Math.round(attacker.atk * mult));
+  applyDamageToTarget(target, dmg, mult, arenaEl);
+
+  if (attacker.element) {
+    const img = attacker.element.querySelector('img') || attacker.element;
+    if (window.anime) {
+      window.anime({
+        targets: img,
+        scale: [
+          { value: 1.6, duration: 120, easing: 'easeOutQuad' },
+          { value: 1.0, duration: 280, easing: 'easeOutElastic(1, 0.6)' }
+        ]
+      });
+    } else {
+      attacker.element.classList.add('attacking');
+      setTimeout(() => attacker.element && attacker.element.classList.remove('attacking'), 100);
+    }
+  }
+
 }
 
 function createBattleUnitEl(unit) {
@@ -109,7 +185,16 @@ function updateBattleUnitEl(unit) {
   const fill = unit.element.querySelector('.unit-hp-fill');
   if (fill) {
     const pct = Math.max(0, (unit.currentHp / unit.maxHp) * 100);
-    fill.style.width = pct + '%';
+    if (window.anime) {
+      window.anime({
+        targets: fill,
+        width: pct + '%',
+        duration: 550,
+        easing: 'easeOutQuad'
+      });
+    } else {
+      fill.style.width = pct + '%';
+    }
     fill.classList.toggle('low', pct < 35);
   }
 }
@@ -117,8 +202,9 @@ function updateBattleUnitEl(unit) {
 export function startBattle(opts) {
   const G = getState();
   if (G.phase !== 'prep') return;
-  const team = fieldPokemon();
-  if (team.length === 0) return;
+  const teamWithPos = fieldPokemonWithPositions();
+  if (teamWithPos.length === 0) return;
+  const team = teamWithPos.map(({ pkmn }) => pkmn);
 
   G.phase = 'battle';
   G.selected = null;
@@ -127,16 +213,22 @@ export function startBattle(opts) {
 
   const arenaEl = document.getElementById('arena');
   arenaEl.classList.add('active');
-  arenaEl.querySelectorAll('.battle-unit, .damage-number, .battle-result-overlay').forEach(e => e.remove());
+  arenaEl.querySelectorAll('.battle-unit, .damage-number, .battle-result-overlay, .battle-projectile').forEach(e => e.remove());
 
   const arenaW = arenaEl.offsetWidth;
   const arenaH = arenaEl.offsetHeight;
 
   const enemies = generateEnemies(G.round);
-  const playerUnits = team.map((p, i) => makeBattleUnit(p, 'player', i, team.length, arenaW, arenaH));
-  const enemyUnits = enemies.map((p, i) => makeBattleUnit(p, 'enemy', i, enemies.length, arenaW, arenaH));
+  const playerTypeTraits = getActiveTraits(team);
+  const playerRoleTraits = getActiveRoleTraits(team);
+  const playerUnits = teamWithPos.map(({ pkmn, r, c }, i) => {
+    const buffed = applyTraitsToUnit(pkmn, playerTypeTraits, playerRoleTraits);
+    return makeBattleUnit(buffed, 'player', i, teamWithPos.length, arenaW, arenaH, r, c);
+  });
+  const enemyUnits = enemies.map((p, i) => makeBattleUnit(p, 'enemy', i, enemies.length, arenaW, arenaH, Math.floor(i / FIELD_COLS), i % FIELD_COLS));
 
   G.battleUnits = [...playerUnits, ...enemyUnits];
+  G.battleProjectiles = [];
   G.battleUnits.forEach(u => {
     u.element = createBattleUnitEl(u);
     arenaEl.appendChild(u.element);
@@ -173,7 +265,7 @@ export function startBattle(opts) {
 
     setTimeout(() => {
       arenaEl.classList.remove('active');
-      arenaEl.querySelectorAll('.battle-unit, .damage-number, .battle-result-overlay').forEach(e => e.remove());
+      arenaEl.querySelectorAll('.battle-unit, .damage-number, .battle-result-overlay, .battle-projectile').forEach(e => e.remove());
       if (G.hp <= 0) opts.onGameOver();
       else opts.onRoundStart();
     }, 2000);
@@ -193,10 +285,35 @@ export function startBattle(opts) {
       return;
     }
 
+    const projectiles = G.battleProjectiles;
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const p = projectiles[i];
+      p.x += p.vx * dt * G.battleSpeed;
+      p.y += p.vy * dt * G.battleSpeed;
+      p.element.style.left = (p.x - 8) + 'px';
+      p.element.style.top = (p.y - 8) + 'px';
+      const distToTarget = Math.hypot(p.tx - p.x, p.ty - p.y);
+      if (distToTarget < PROJECTILE_HIT_RADIUS || p.target.currentHp <= 0) {
+        if (p.target.currentHp > 0) applyDamageToTarget(p.target, p.dmg, p.mult, arenaEl);
+        p.element.remove();
+        projectiles.splice(i, 1);
+      }
+    }
+
     alive.forEach(u => {
       const targets = u.team === 'player' ? foes : friends;
       if (!u.target || u.target.currentHp <= 0) u.target = nearestUnit(u, targets);
       if (!u.target) return;
+
+      if (u.isRanged) {
+        u.atkTimer += dt * G.battleSpeed;
+        if (u.atkTimer >= u.spd) {
+          u.atkTimer = 0;
+          spawnProjectile(u, u.target, arenaEl, projectiles);
+        }
+        updateBattleUnitEl(u);
+        return;
+      }
 
       const dx = u.target.x - u.x;
       const dy = u.target.y - u.y;
