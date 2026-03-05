@@ -1,11 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Pokémon Merge Tactics</title>
-<link rel="stylesheet" href="styles.css">
-<style media="not all">
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
@@ -555,64 +547,4 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-</style>
-</head>
-<body>
 
-<div id="game">
-  <div class="header">
-    <div class="round-badge">R<span id="round-num">1</span></div>
-    <div class="level-badge" id="level-badge" title="Buy XP: 4g → 4 XP">
-      <div class="level-num" id="level-num">3</div>
-      <div class="xp-bar-wrap"><div class="xp-bar" id="xp-bar"></div></div>
-    </div>
-    <div class="hp-bar-wrap">
-      <div class="hp-bar" id="hp-bar"></div>
-      <div class="hp-text" id="hp-text"></div>
-    </div>
-    <div class="gold-display" id="gold-display"></div>
-  </div>
-
-  <div class="phase-banner" id="phase-banner"></div>
-  <div class="arena" id="arena">
-    <div class="arena-bg"></div>
-    <div class="arena-label left">YOUR TEAM</div>
-    <div class="arena-label right">ENEMY</div>
-    <div class="arena-divider"></div>
-  </div>
-  <div class="round-info" id="round-info"></div>
-
-  <div class="area-wrap" id="field-wrap">
-    <div class="area-label">
-      <span>FIELD <span class="count" id="field-count">(0/3)</span></span>
-      <span style="font-size:9px;color:#556">Only field Pokémon fight!</span>
-    </div>
-    <div class="field-grid" id="field"></div>
-  </div>
-
-  <div class="area-wrap" id="bench-wrap">
-    <div class="area-label">
-      <span>BENCH</span>
-      <span style="font-size:9px;color:#556" id="bench-hint"></span>
-    </div>
-    <div class="bench-grid" id="bench"></div>
-  </div>
-
-  <div class="sell-zone" id="sell-zone">SELL</div>
-
-  <div class="shop-wrap" id="shop-wrap">
-    <div class="shop-header">
-      <span>SHOP</span>
-      <span id="shop-hint"></span>
-    </div>
-    <div class="shop" id="shop"></div>
-  </div>
-
-  <div class="controls" id="controls"></div>
-</div>
-
-<div class="overlay" id="overlay"></div>
-
-<script type="module" src="game.js"></script>
-</body>
-</html>
